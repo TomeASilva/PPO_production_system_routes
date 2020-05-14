@@ -43,6 +43,24 @@ class Machine:
         self.name = f"machine_{index}"
         self.index = index # number of machine
         self.resource = simpy.Resource(env, capacity=1)
+
+class Auth:
+    def __init__(self, _id):
+        self.id = _id
+                                       
+class Route:
+    def __init__(self, env, index, machines, buffers):
+
+        self.name = f"Route_{index}"
+        self.index = index
+        self.wip_limit = 0
+        self.number_auth_onroute = 0
+        self.number_auth_requested = 0
+        self.machines = machines
+        self.queue = simpy.Store(env)
+        self.number_auth = 0 
+        self.number_parts_produced = 0 
+        self.buffers = buffers 
         
 class ProductionSystem: 
     def __init__(self,
@@ -80,6 +98,7 @@ class ProductionSystem:
         self.use_seeds = use_seeds
         self.twin_system = twin_system
         self.logging = logging
+        self.sum_rewards = 0
         
         self.previous_exit_time = 0 #time last part exited the system
         #state representation
@@ -108,6 +127,7 @@ class ProductionSystem:
         self.machines = [] # List of machine for this production system to be filled up create_workstations method
         self.buffers = [] #List of buffers for every machine to be filled up in create_workstations method
         self.order_buffer = None # Preshop floor buffer to be created in create_workstations method
+        self.parts_in_system = [0, 0, 0] # Number of parts that entered the system 
         self.parts_produced = 0 # Counter for the total number of parts produced
         # Counter for the number of parts of each type
         self.parts_produced_type = [0, 0, 0]  #[number parts A, number parts B, number parts C] 
@@ -117,16 +137,14 @@ class ProductionSystem:
         self.random_states_parts = [np.random.RandomState(seed) for seed in self.random_seeds_part_gen]
 
         self.create_workstations() #create_workstations 
-        self.route_0_machines = [self.machines[0], self.machines[1]]
-        self.route_1_machines = [self.machines[0], self.machines[2], self.machines[1]]
-        self.route_2_machines = [self.machines[2], self.machines[3]]
-        self.routes_machines = [self.route_0_machines, self.route_1_machines, self.route_2_machines]
+        self.routes = []
         
-        self.route_0_buffers = [self.buffers[0], self.buffers[1]]
-        self.route_1_buffers = [self.buffers[0], self.buffers[2], self.buffers[1]]
-        self.route_2_buffers = [self.buffers[2], self.buffers[3]]
-        self.routes_buffers = [self.route_0_buffers, self.route_1_buffers, self.route_2_buffers]
+        self.machine_routes_index = [[0, 1], [0, 2, 1], [2, 3]]
         
+        self.create_routes(number_routes, self.machine_routes_index)
+        initial_wip = [10000, 10000, 10000]
+        self.change_wip_limit(initial_wip)
+
         # Creates a process that controls the decision making process and WIP control
         self.env.process(self.decision_epoch_interval_process_control())
         # Elements of the state vector that are continous need a process that checks those elements value and 
@@ -142,16 +160,51 @@ class ProductionSystem:
             # Periodically tracks the WIP in each route, and The number parts produced in Total and by each type of part
             self.env.process(self.tracking_files_WIP_TH())
         
+    def change_wip_limit(self, wip_limits):
+        auth_index = 0
         
+        
+        for route in self.routes:
+            #Change the new_wip
+            route.wip_limit = wip_limits[route.index]
+            
+            if route.number_auth > route.wip_limit:
+                while route.number_auth > route.wip_limit and len(route.queue.items) > 0:
+                    route.number_auth -= 1
+                    auth = route.queue.get()
+                
+     
+            #The number of authorizations stays the same 
+            if route.number_auth == route.wip_limit:
+                pass
+            
+            if route.number_auth < route.wip_limit:
+               
+                while route.number_auth < route.wip_limit:
+                    
+                    auth_index += 1
+                    auth = Auth(auth_index)
+                    
+                    route.queue.put(auth) 
+                    route.number_auth += 1
+                    
+                                
+    def create_routes(self, number_routes, machine_routes_index):
+        for i in range(self.number_routes):
+            machines = [self.machines[machine_index] for machine_index in machine_routes_index[i]]
+            buffers = [self.buffers[buffer_index] for buffer_index in machine_routes_index[i]] 
+            
+            self.routes.append(Route(self.env, i, machines, buffers))
+            
 
     def create_workstations (self):
         """Creates a workstation, each workstation is comprised of machine and a buffer that precedes it"""
         self.order_buffer = IventoryBuffer(self.env, index="Order")
         for i in range(self.number_workstations):
-            self.machines.append(Machine(self.env, i))
             self.buffers.append(IventoryBuffer(self.env, i))
             
-    def generate_demand (self, part_index):
+            self.machines.append(Machine(self.env, i))
+    def generate_demand(self, part_index):
         """ 
         Process that creates parts of a given type designated by the part index
         """
@@ -167,7 +220,8 @@ class ProductionSystem:
             
             Part (count, part_index, self)
             count += 1
-            
+            self.parts_in_system[part_index] += 1
+
             yield self.env.timeout(interarrival_time) 
         
             
@@ -191,7 +245,8 @@ class ProductionSystem:
             self.previous_state = np.array(self.state, dtype=np.float32) / (1 - self.beta_state_weighted_average ** np.array(self.state_element_number_updates, dtype=np.float32))   
             self.previous_state = np.reshape(self.previous_state, (1, -1))
             self.action = self.policy.get_action(self.previous_state) # action is a list with Wip caps one for each route
-            self.wip_cap = self.action 
+            self.wip_cap = self.action
+            self.change_wip_limit(self.wip_cap) 
             
             #reset state vector, number of updates and number of parts
             self.state = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -212,7 +267,7 @@ class ProductionSystem:
             if self.twin_system != None:
                 self.reward = self.compute_reward(self.next_state)
 
-                sample = (self.previous_state.reshape(self.previous_state.shape[1],), np.array(self.action), self.next_state.reshape(self.next_state.shape[1],), self.reward)
+                sample = (self.previous_state.reshape(self.previous_state.shape[1],), np.array(self.action).reshape(1, 3), self.next_state.reshape(self.next_state.shape[1],), self.reward)
                 self.ep_buffer.add_transition(sample)
            
         
@@ -236,11 +291,11 @@ class ProductionSystem:
         #0- Wip route 1
         #1- Wip route 2
         #2- Wip route 3 
-        routes = [self.route_0_machines, self.route_1_machines, self.route_2_machines]
+        
         
         for i in range(3):
             self.state_element_number_updates[i] += 1
-            self.state[0] = (self.state[i] * self.beta_state_weighted_average + self.compute_wip_level(routes[i]) * (1 - self.beta_state_weighted_average))
+            self.state[0] = (self.state[i] * self.beta_state_weighted_average + self.compute_wip_level(self.routes[i].machines) * (1 - self.beta_state_weighted_average))
 
     def utilization_tracking(self):
         """ 
@@ -353,9 +408,9 @@ class ProductionSystem:
             #Time;WIP_route_0;WIP_CAP_route_0;WIP_route_1; WIP_Cap_route_1;WIP route_2; WIP Cap route_2
             with open(f"{self.path}/WIP.csv", 'a') as f:
                 f.write(f"{str(self.env.now)};")
-                f.write(f"{self.compute_wip_level(self.route_0_machines)};{self.wip_cap[0]};") #route_0
-                f.write(f"{self.compute_wip_level(self.route_1_machines)};{self.wip_cap[1]};") #route_1
-                f.write(f"{self.compute_wip_level(self.route_2_machines)};{self.wip_cap[2]}\n") #route_2
+                f.write(f"{self.compute_wip_level(self.routes[0].machines)};{self.routes[0].wip_limit};") #route_0
+                f.write(f"{self.compute_wip_level(self.routes[1].machines)};{self.routes[1].wip_limit};") #route_1
+                f.write(f"{self.compute_wip_level(self.routes[2].machines)};{self.routes[2].wip_limit}\n") #route_2
             
             #Time;Total parts Produced;Part0; Part1; Part2            
             with open(f"{self.path}/PartsProduced.csv", 'a') as f:
@@ -389,9 +444,9 @@ class ProductionSystem:
         if self.twin_system != None:
             #Production system
             utilization = state[9:13]
-            route_0_bottleneck = max([utilization[machine.index] for machine in self.route_0_machines])
-            route_1_bottleneck = max([utilization[machine.index] for machine in self.route_1_machines])
-            route_2_bottleneck = max([utilization[machine.index] for machine in self.route_2_machines]) 
+            route_0_bottleneck = max([utilization[machine.index] for machine in self.routes[0].machines])
+            route_1_bottleneck = max([utilization[machine.index] for machine in self.routes[1].machines])
+            route_2_bottleneck = max([utilization[machine.index] for machine in self.routes[2].machines]) 
 
             wip_route_0 = state[0]
             wip_route_1 = state[1]
@@ -401,9 +456,9 @@ class ProductionSystem:
             twin_state = self.twin_system.next_state[0, :]
             utilization_twin = twin_state[9:13]
             
-            route_0_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.route_0_machines])
-            route_1_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.route_1_machines])
-            route_2_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.route_2_machines])
+            route_0_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.routes[0].machines])
+            route_1_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.routes[1].machines])
+            route_2_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.routes[2].machines])
             
             wip_route_0_twin = twin_state[0]
             wip_route_1_twin = twin_state[1]
@@ -418,6 +473,7 @@ class ProductionSystem:
             else:
                 reward = 0
             
+            self.sum_rewards += reward 
             return reward 
             
         else: 
@@ -430,8 +486,9 @@ class Part:
         self.production_system = production_system
         self.type = _type
         self.id = _id
-        self.machines = production_system.machines
-        self.buffers = production_system.buffers
+        self.machines = production_system.routes[self.type].machines 
+        self.buffers = production_system.routes[self.type].buffers
+        self.route = production_system.routes[self.type] 
         self.order_buffer = production_system.order_buffer
         self.inf_s = None # time it starts as information
         self.inf_e = None # time it starts as part in shop-floor(shop-floor release)
@@ -448,86 +505,104 @@ class Part:
         """Sets a part into its production route """
         self.order_buffer.queue.put(self)
         self.inf_s = self.env.now # Entered the plant as information
-        
+
         if self.production_system.twin_system == None:
             loggerTwin.debug(f"Part_{self.type}_{self.id} entered the system as information at {self.inf_s}")
         else:
-            logger.debug(f"{self.type}_{self.id} entered the system as information at {self.inf_s}")
-
-        # mantains env cycling until condition is met otherwise the simpy will stop cycling
-        # yield self.env.event()
+            logger.debug(f"Part_{self.type}_{self.id} entered the system as information at {self.inf_s}")
         
-        while not self.done:
-            yield self.env.timeout(0)
-            
-            if self.production_system.compute_wip_level(self.production_system.routes_machines[self.type]) < self.production_system.wip_cap[self.type] and (f"{self.production_system.order_buffer.queue.items[0].type}_{self.production_system.order_buffer.queue.items[0].id}" == f"{self.type}_{self.id}" or len(self.production_system.order_buffer.queue.items) == 0):
-                self.order_buffer.queue.get()
-                #order entered production system
-                
-                if self.production_system.twin_system == None:
-                    loggerTwin.debug(f"Part_{self.type}_{self.id}, released into production at {self.env.now}")
-                else:
-                    logger.debug(f"{self.type}_{self.id}, released into production at {self.inf_s}")
-                
-                self.production_system.routes_buffers[self.type][0].queue.put(self)
-                
-                if self.production_system.twin_system == None:
-                    loggerTwin.debug(f"Part_{self.type}_{self.id}, entered {self.production_system.routes_buffers[self.type][0].name} at {self.env.now}")
-                else:
-                    logger.debug(f"{self.type}_{self.id}, entered {self.production_system.routes_buffers[self.type][0].name} at {self.env.now}")
-                
-                self.inf_e = self.env.now
-                self.shop_s = self.env.now
-                #Request  machine on route and process part 
-                for i in range (len(self.production_system.routes_machines[self.type])):
-                        
-                    with self.production_system.routes_machines[self.type][i].resource.request() as request:
-                        yield request
-                        self.production_system.routes_buffers[self.type][i].queue.get()
-                        
-                        if self.production_system.twin_system == None:
-                            loggerTwin.debug(f"Part_{self.type}_{self.id} started being processed on {self.production_system.routes_machines[self.type][i].name} at {self.env.now}")
-                        else:
-                            logger.debug(f"{self.type}_{self.id}, started being processed on {self.production_system.routes_machines[self.type][i].name} at {self.env.now}")
-                        
-                        distribution_parameters = self.production_system.parts_info[str(self.type)][self.production_system.routes_machines[self.type][i].name]
-                        if self.production_system.use_seeds:
-                            time = self.production_system.random_states_machines[self.production_system.routes_machines[self.type][i].index].uniform(distribution_parameters[0], distribution_parameters[1])
-                        else:
-                            time = np.random.uniform(distribution_parameters[0], distribution_parameters[1])
-                        
-                        #update processing time for first machine on route
-                        self.production_system.processing_time_tracking(time, self.production_system.routes_machines[self.type][i].index)
-                        yield self.env.timeout(time)
-
-                    #Put part on the  next buffer of the product route
-                    if i != ( len(self.production_system.routes_machines[self.type]) - 1 ):
-                        self.production_system.routes_buffers[self.type][i + 1].queue.put(self)
-                        if self.production_system.twin_system == None:
-                            loggerTwin.debug(f"Part_{self.type}_{self.id}, entered {self.production_system.routes_buffers[self.type][i + 1].name} at {self.env.now}")
-                        else:
-                            logger.debug(f"{self.type}_{self.id}, entered {self.production_system.routes_buffers[self.type][i + 1].name} at {self.env.now}")
-                                
-                
-                self.shop_e = self.env.now
-                
-                if self.production_system.twin_system == None:
-                    loggerTwin.debug(f"Part_{self.type}_{self.id}, Exited the production system at {self.env.now}")
-                else:
-                    logger.debug(f"{self.type}_{self.id}, Exited the production system at {self.env.now}")
-                
-                #Increase the count of parts that exited the system     
-                self.production_system.parts_produced += 1
-                self.production_system.parts_produced_type[self.type] += 1
-                self.production_system.parts_produced_epoch += 1
-                self.production_system.parts_produced_epoch_type[self.type] += 1
-                
-                if self.production_system.files:
-                    self.production_system.tracking_files_flow_times(self)
-                
-                self.done = True
+        "Request authorization to enter the production route"
+        with self.route.queue.get() as route_req:
+            if self.production_system.twin_system == None:
+                loggerTwin.debug(f"Part_{self.type}_{self.id} requested Route_{self.route.index}")
             else:
-                #If WIP still above WIP cap wait until WIP Drops
-                self.env.step()
+                logger.debug(f"Part_{self.type}_{self.id} requested Route_{self.route.index}")
                 
+            self.route.number_auth_requested += 1 
+            auth_taken = yield route_req
+            
+            if self.production_system.twin_system == None:
+                loggerTwin.debug(f"Part_{self.type}_{self.id} was granted access to Route_{self.route.index}")
+            else:
+                logger.debug(f"Part_{self.type}_{self.id} was granted access Route_{self.route.index}")
+        
+        self.route.number_auth_onroute += 1
+        self.route.number_auth_requested -= 1
+            
+        self.order_buffer.queue.get()
+        #order entered production system
+        
+        if self.production_system.twin_system == None:
+            loggerTwin.debug(f"Part_{self.type}_{self.id}, released into production at {self.env.now}")
+        else:
+            logger.debug(f"{self.type}_{self.id}, released into production at {self.inf_s}")
+        
+        self.buffers[0].queue.put(self)
+        
+        if self.production_system.twin_system == None:
+            loggerTwin.debug(f"Part_{self.type}_{self.id}, entered {self.buffers[0].name} at {self.env.now}")
+        else:
+            logger.debug(f"{self.type}_{self.id}, entered {self.buffers[0].name} at {self.env.now}")
+        
+        self.inf_e = self.env.now
+        self.shop_s = self.env.now
+        #Request  machine on route and process part
+        for i in range(len(self.machines)):
+                
+            with self.machines[i].resource.request() as request:
+                yield request
+                self.buffers[i].queue.get()
+                
+                if self.production_system.twin_system == None:
+                    loggerTwin.debug(f"Part_{self.type}_{self.id} started being processed on {self.machines[i].name} at {self.env.now}")
+                else:
+                    logger.debug(f"{self.type}_{self.id}, started being processed on {self.machines[i].name} at {self.env.now}")
+                
+                distribution_parameters = self.production_system.parts_info[str(self.type)][self.machines[i].name]
+                if self.production_system.use_seeds:
+                    time = self.production_system.random_states_machines[self.machines[i].index].uniform(distribution_parameters[0], distribution_parameters[1])
+                else:
+                    time = np.random.uniform(distribution_parameters[0], distribution_parameters[1])
+                
+                #update processing time for first machine on route
+                self.production_system.processing_time_tracking(time, self.machines[i].index)
+                yield self.env.timeout(time)
+
+            #Put part on the  next buffer of the product route
+            if i != (len(self.machines) - 1 ):
+                self.buffers[i + 1].queue.put(self)
+                if self.production_system.twin_system == None:
+                    loggerTwin.debug(f"Part_{self.type}_{self.id}, entered {self.buffers[i + 1].name} at {self.env.now}")
+                else:
+                    logger.debug(f"{self.type}_{self.id}, entered {self.buffers[i + 1].name} at {self.env.now}")
+                        
+        
+        self.shop_e = self.env.now
+        
+        "Remove authorizations of the route if wip_limit was reduced beyond value not available at the authorization store"
+        if self.route.number_auth > self.route.wip_limit:
+            
+            self.route.number_auth -= 1
+        else:
+            
+            self.route.queue.put(auth_taken)
+        
+        self.route.number_auth_onroute -= 1
+        
+        if self.production_system.twin_system == None:
+            loggerTwin.debug(f"Part_{self.type}_{self.id}, Exited the production system at {self.env.now}")
+        else:
+            logger.debug(f"{self.type}_{self.id}, Exited the production system at {self.env.now}")
+        
+        #Increase the count of parts that exited the system     
+        self.production_system.parts_produced += 1
+        self.production_system.parts_produced_type[self.type] += 1
+        self.production_system.parts_produced_epoch += 1
+        self.production_system.parts_produced_epoch_type[self.type] += 1
+        
+        if self.production_system.files:
+            self.production_system.tracking_files_flow_times(self)
+        
+        self.done = True
+       
                 

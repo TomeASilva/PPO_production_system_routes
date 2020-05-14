@@ -16,6 +16,13 @@ import datetime
 import logging
 import pickle
 
+gradient_logger = logging.getLogger(__name__)
+gradient_logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(message)s")
+file_handler = logging.FileHandler("./logs/gradient.log")
+file_handler.setFormatter(formatter)
+gradient_logger.addHandler(file_handler)
+
 def summarize_performance(path):
 
     wip = np.loadtxt (f"{path}/WIP.csv", delimiter=";", unpack=False)
@@ -76,10 +83,6 @@ class FixedPolicy():
     
     def get_action(self, state):
         return self.wip
-
-
-
-
 
 def build_networks (layer_sizes, activations, input, istrunk=False):
     num_layers = len(layer_sizes)
@@ -310,7 +313,7 @@ class Agent:
             random_seeds = [ep + 1, ep + 2, ep + 3, ep + 4, ep + 5, ep + 6, ep + 7]
             env = simpy.Environment()
 
-            production_system_1 = ProductionSystem(env=env,
+            self.production_system_1 = ProductionSystem(env=env,
                              **self.production_system_configuration,
                              ep_buffer=self.buffer1,
                              policy=self.FixedPolicy, # will be defined only after instatiation of child classes
@@ -323,10 +326,10 @@ class Agent:
                              
                              
                              )
-            production_system_2 = ProductionSystem(env=env,
+            self.production_system_2 = ProductionSystem(env=env,
                                                    **self.production_system_configuration,
                                                    ep_buffer=self.buffer2,
-                                                   twin_system=production_system_1,
+                                                   twin_system=self.production_system_1,
                                                    policy=self.PPO, # will be defined only after instatiation of child classes
                                                    use_seeds=True,
                                                    files=files,
@@ -338,7 +341,7 @@ class Agent:
 
             env.run(self.run_length)
         if files:
-            return (production_system_1.path, production_system_2.path)
+            return (self.production_system_1.path, self.production_system_2.path)
         
 
 class GlobalAgent(Agent):
@@ -566,7 +569,7 @@ class GlobalAgent(Agent):
                     self.critic_optimizer.apply_gradients(zip(critic_gradient, self.PPO.variables["critic"]))
                     #---
                     #---START Observe the value of given state to see convergence
-                    state = np.array([10, 3, 1, 0.80, 0.50, 18, 15])
+                    state = np.array([4, 5, 10, 4, 3, 2, 1, 1, 1, 0.4, 0.9, 0.7, 0.32, 10, 11, 4, 10])
                     value = self.state_value(state.reshape(1, -1))
                     value = float(value.numpy()[0])
                 
@@ -648,7 +651,7 @@ class GlobalAgent(Agent):
                 if self.number_optimization_cycles % 1 == 0:
                     rewards_volatile = []
                 for i in range (1):
-                    path_conwip, path_PPO = self.collect_episodes(1, True, False)
+                    path_conwip, path_PPO = self.collect_episodes_training(1, True, False)
                     reward_fixed = self.production_system_1.sum_rewards 
                     reward_PPO = self.production_system_2.sum_rewards 
 
@@ -658,7 +661,12 @@ class GlobalAgent(Agent):
                     summarize_performance(path_conwip)
                     print("--------------PPO Policy---------------")
                     summarize_performance(path_PPO)
-                    print(f"Reward {reward_PPO}") 
+                    print(f"\033[0;31mParts that entered the system: {sum(self.production_system_2.parts_in_system)}\033[m")
+                    for i in range (3):
+                        print(f"Part_{i}: {self.production_system_1.parts_in_system[i]}")
+
+                    print(f"\033[0;32mReward {reward_PPO}\033[m")
+                     
 
                     # av_reward = sum(rewards_volatile) / len(rewards_volatile)
                     # max_reward = max(rewards_volatile)
@@ -704,7 +712,7 @@ class GlobalAgent(Agent):
             rewards_volatile = []
             for i in range (1):
                 
-                path_conwip, path_PPO = self.collect_episodes(1, True, False)
+                path_conwip, path_PPO = self.collect_episodes_training(1, True, False)
                 reward_fixed = self.production_system_1.sum_rewards 
                 reward_PPO = self.production_system_2.sum_rewards 
 
@@ -714,14 +722,20 @@ class GlobalAgent(Agent):
                 summarize_performance(path_conwip)
                 print("--------------PPO Policy---------------")
                 summarize_performance(path_PPO)
-                print(f"Reward {reward_PPO}") 
-       
+                print(f"\033[0;31mParts that entered the system: {sum(self.production_system_1.parts_in_system)}\033[m")
+                
+                for i in range (3):
+                    
+                    print(f"Part_{i}: {self.production_system_1.parts_in_system[i]}")
+
+                print(f"\033[0;32mReward {reward_PPO}\033[m")
+                     
             print(f"Exited Global Agent")
                 
         except KeyboardInterrupt:
                 # rewards_volatile = []
             for i in range (1):
-                path_conwip, path_PPO = self.collect_episodes(1, True, False)
+                path_conwip, path_PPO = self.collect_episodes_training(1, True, False)
                 reward_fixed = self.production_system_1.sum_rewards 
                 reward_PPO = self.production_system_2.sum_rewards 
 
@@ -731,7 +745,12 @@ class GlobalAgent(Agent):
                 summarize_performance(path_conwip)
                 print("--------------PPO Policy---------------")
                 summarize_performance(path_PPO)
-                print(f"Reward {reward_PPO}")             
+                print(f"\033[0;31mParts that entered the system: {sum(self.production_system_1.parts_in_system)}\033[m")
+                for i in range (3):
+                    
+                    print(f"Part_{i}: {self.production_system_1.parts_in_system[i]}")      
+                
+                print(f"\033[0;32mReward {reward_PPO}\033[m")
                 
             # rewards_volatile.append(reward)
             # av_reward = sum(rewards_volatile) / len(rewards_volatile)
@@ -741,12 +760,12 @@ class GlobalAgent(Agent):
             print("Press ctr + C one last time. Summary has be saved!")
             # self.average_reward_queue.put(sum(self.rewards) / len(self.rewards), block=True, timeout=30)
 
-    @tf.function(input_signature=(tf.TensorSpec(shape=[None, 7]),))
+    @tf.function(input_signature=(tf.TensorSpec(shape=[None, 17]),))
     def state_value(self, state):
         value = self.PPO.critic(state)
         return value
     
-    # @tf.function(input_signature=(tf.TensorSpec(shape=[None, 7]), tf.TensorSpec(shape=[None, 1]), tf.TensorSpec(shape=[None, 1])))  
+    @tf.function(input_signature=(tf.TensorSpec(shape=[None, 17]), tf.TensorSpec(shape=[None, 3]), tf.TensorSpec(shape=[None, 1])))  
     def gradient_actor(self, states, actions, Qsa):
         with tf.GradientTape(persistent=True) as tape:
             if self.log_gradient_descent:       
@@ -802,7 +821,6 @@ class GlobalAgent(Agent):
             entropy = self.probability_density_func.entropy()
             entropy_average = tf.reduce_mean(entropy)
             entropy_average = tf.stop_gradient(entropy_average)
-            
             #---
             #---START compute the probability of the actions taken at the current episode
             probs = self.probability_density_func.prob(actions)
@@ -859,7 +877,7 @@ class GlobalAgent(Agent):
           
         return gradients, entropy_average, actor_loss
             
-    @tf.function(input_signature=(tf.TensorSpec(shape=[None, 7]), tf.TensorSpec(shape=[None, 1])))
+    @tf.function(input_signature=(tf.TensorSpec(shape=[None, 17]), tf.TensorSpec(shape=[None, 1])))
     def gradient_critic(self, states, Qsa):
         with tf.GradientTape(persistent=True) as tape:
         
@@ -943,7 +961,7 @@ class WorkerAgent(Agent):
             # ---START Collect n episodes from this worker
             for ep in range(self.number_episodes_worker): # Run more than episode per iteration of PPO
                 if self.current_number_episodes.value < self.total_number_episodes:
-                    self.collect_episodes_training(1, True, False)
+                    self.collect_episodes_training(1, False, False)
                     
                     states, actions, next_states, rewards, qsa = self.buffer2.unroll_memory(self.gamma, self.n_reward_returns, self.PPO)
                     rollout = (states, actions, next_states, rewards, qsa)
@@ -1019,11 +1037,11 @@ hyperparameters = {"ppo_networks_configuration" : ppo_networks_configuration,
                     "gradient_steps_per_episode_critic": 5,
                     "gradient_steps_per_episode_actor": 10,
                     "epsilon": 0.2,
-                    "number_episodes_worker": 10,
+                    "number_episodes_worker": 1,
                     "n_reward_returns": 5
                     }
 agent_config = {
-    "action_range": (0, 100),
+    "action_range": (0, 500),
     "total_number_episodes" : 100000,
     "conwip": 1000,
     "run_length": 3000
@@ -1031,9 +1049,9 @@ agent_config = {
 }
  
 parts = {
-    "0": {"machine_0": [0, 10], "machine_1": [0, 10], "demand": [0, 10]},
-    "1": {"machine_0": [0, 10], "machine_2": [0, 10], "machine_1": [0, 10], "demand": [0, 10]},
-    "2": {"machine_2": [0, 10], "machine_3": [0, 10], "demand": [0, 10]}}
+    "0": {"machine_0": [0, 10], "machine_1": [0, 10], "demand": [5, 5]},
+    "1": {"machine_0": [0, 5], "machine_2": [0, 20], "machine_1": [0, 20], "demand": [10, 10]},
+    "2": {"machine_2": [0, 10], "machine_3": [0, 30], "demand": [15, 15]}}
 
 
 production_system_config = {
@@ -1048,7 +1066,7 @@ production_system_config = {
 if __name__ == "__main__":
     
     multiprocessing.set_start_method('spawn')
-    number_of_workers = 1 
+    number_of_workers = 4 
 
     params_queue = Manager().Queue(number_of_workers)
     current_number_episodes = Manager().Value("i", 0)    
