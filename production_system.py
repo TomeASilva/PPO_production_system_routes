@@ -80,7 +80,7 @@ class ProductionSystem:
                  use_seeds=False, # use seeds to generate processing times and interval arrival times
                  twin_system=None, # compare current policy with another policy
                  logging=False):  # produces logs about the flow of parts through the system for current system and its twin
-
+        self.auth_index = 0
         self.env = env
         self.decision_epoch_interval = decision_epoch_interval
         self.track_state_interval = track_state_interval
@@ -142,7 +142,7 @@ class ProductionSystem:
         self.machine_routes_index = [[0, 1], [0, 2, 1], [2, 3]]
         
         self.create_routes(number_routes, self.machine_routes_index)
-        initial_wip = [10000, 10000, 10000]
+        initial_wip = [500, 500 ,500] # The initial WIP to be used on the first decision epoch, equal for Fixed Policy and PPO
         self.change_wip_limit(initial_wip)
 
         # Creates a process that controls the decision making process and WIP control
@@ -161,7 +161,6 @@ class ProductionSystem:
             self.env.process(self.tracking_files_WIP_TH())
         
     def change_wip_limit(self, wip_limits):
-        auth_index = 0
         
         
         for route in self.routes:
@@ -182,8 +181,8 @@ class ProductionSystem:
                
                 while route.number_auth < route.wip_limit:
                     
-                    auth_index += 1
-                    auth = Auth(auth_index)
+                    self.auth_index += 1
+                    auth = Auth(self.auth_index)
                     
                     route.queue.put(auth) 
                     route.number_auth += 1
@@ -221,6 +220,7 @@ class ProductionSystem:
             Part (count, part_index, self)
             count += 1
             self.parts_in_system[part_index] += 1
+            self.interarrival_time_tracking(interarrival_time, part_index)
 
             yield self.env.timeout(interarrival_time) 
         
@@ -263,6 +263,10 @@ class ProductionSystem:
             
             self.next_state = np.array(self.state, dtype=np.float32) / (1 - self.beta_state_weighted_average ** np.array(self.state_element_number_updates, dtype=np.float32))
             self.next_state = np.reshape(self.next_state, (1, -1))
+            # The twin system refreshes parts_produced_epoch and parts-produced_epoch_type
+            # before the PPO controlled system computes the reward
+            self.parts_produced_epoch_previous = self.parts_produced_epoch
+            self.parts_produced_epoch_type_previous = self.parts_produced_epoch_type 
             
             if self.twin_system != None:
                 self.reward = self.compute_reward(self.next_state)
@@ -295,7 +299,7 @@ class ProductionSystem:
         
         for i in range(3):
             self.state_element_number_updates[i] += 1
-            self.state[0] = (self.state[i] * self.beta_state_weighted_average + self.compute_wip_level(self.routes[i].machines) * (1 - self.beta_state_weighted_average))
+            self.state[i] = (self.state[i] * self.beta_state_weighted_average + self.compute_wip_level(self.routes[i].machines) * (1 - self.beta_state_weighted_average))
 
     def utilization_tracking(self):
         """ 
@@ -443,36 +447,49 @@ class ProductionSystem:
         state = list(state[0, :])
         if self.twin_system != None:
             #Production system
-            utilization = state[9:13]
-            route_0_bottleneck = max([utilization[machine.index] for machine in self.routes[0].machines])
-            route_1_bottleneck = max([utilization[machine.index] for machine in self.routes[1].machines])
-            route_2_bottleneck = max([utilization[machine.index] for machine in self.routes[2].machines]) 
-
+            # utilization = state[9:13]
+            # route_0_bottleneck = max([utilization[machine.index] for machine in self.routes[0].machines])
+            # route_1_bottleneck = max([utilization[machine.index] for machine in self.routes[1].machines])
+            # route_2_bottleneck = max([utilization[machine.index] for machine in self.routes[2].machines]) 
+            
+            
             wip_route_0 = state[0]
             wip_route_1 = state[1]
             wip_route_2 = state[2]
 
-            # Twin system
+            wip = [wip_route_0, wip_route_1, wip_route_2]
+            # # Twin system
             twin_state = self.twin_system.next_state[0, :]
-            utilization_twin = twin_state[9:13]
+            # utilization_twin = twin_state[9:13]
             
-            route_0_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.routes[0].machines])
-            route_1_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.routes[1].machines])
-            route_2_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.routes[2].machines])
+            # route_0_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.routes[0].machines])
+            # route_1_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.routes[1].machines])
+            # route_2_bottleneck_twin = max([utilization_twin[machine.index] for machine in self.routes[2].machines])
             
             wip_route_0_twin = twin_state[0]
             wip_route_1_twin = twin_state[1]
             wip_route_2_twin = twin_state[2]
+        
+            twin_system_wip = [wip_route_0_twin, wip_route_1_twin, wip_route_2]
+            # route_0 = (route_0_bottleneck >= route_0_bottleneck_twin) and (wip_route_0 <= wip_route_0_twin)
+            # route_1 = (route_1_bottleneck >= route_1_bottleneck_twin) and (wip_route_1 <= wip_route_1_twin)
+            # route_2 = (route_2_bottleneck >= route_2_bottleneck_twin) and (wip_route_2 <= wip_route_2_twin)
             
-            route_0 = (route_0_bottleneck >= route_0_bottleneck_twin) and (wip_route_0 <= wip_route_0_twin)
-            route_1 = (route_1_bottleneck >= route_1_bottleneck_twin) and (wip_route_1 <= wip_route_1_twin)
-            route_2 = (route_2_bottleneck >= route_2_bottleneck_twin) and (wip_route_2 <= wip_route_2_twin)
+            part_goals = []
+            for i in range(self.number_of_different_parts):
+                part_goals.append(self.parts_produced_epoch_type[i] >= self.twin_system.parts_produced_epoch_type_previous[i])
             
-            if route_0 and route_1 and route_2:
-                reward = 1
-            else:
-                reward = 0
+            wip_goals = []
             
+            for i in range(self.number_routes):
+                wip_goals.append(wip[i] < twin_system_wip[i])
+            
+            reward = 0
+            
+            for i in range(self.number_routes):
+                if part_goals[i] and wip_goals[i]:
+                    reward += 1
+
             self.sum_rewards += reward 
             return reward 
             

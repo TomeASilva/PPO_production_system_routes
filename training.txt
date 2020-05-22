@@ -1,0 +1,129 @@
+ppo_networks_configuration = {"trunk_config": {"layer_sizes": [100, 80, 70],
+                                      "activations": ["elu",   "elu", "elu"]},
+
+                     "mu_head_config": {"layer_sizes": [60, 50, 3],
+                                        "activations": ["elu", "elu", "relu"]},
+                     "cov_head_config": {"layer_sizes": [60, 50, 3],
+                                        "activations": ["elu","elu", "relu"]},
+                     "critic_net_config": {"layer_sizes": [100, 100, 100, 80, 40, 1],
+                                            "activations": ["elu", "elu","elu", "elu", "elu", "linear"]},
+                     "input_layer_size": 17
+                       }
+
+
+hyperparameters = {"ppo_networks_configuration" : ppo_networks_configuration,
+                   "actor_optimizer_mu": tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9),
+                   "actor_optimizer_cov": tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9),
+                    "critic_optimizer": tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9),
+                    "entropy": 1,  
+                    "gamma":0.999,
+                    "gradient_clipping_actor": 1.0, 
+                    "gradient_clipping_critic": 1.0, 
+                    "gradient_steps_per_episode_critic": 5,
+                    "gradient_steps_per_episode_actor": 10,
+                    "epsilon": 0.2,
+                    "number_episodes_worker": 10,
+                    "n_reward_returns": 5
+                    }
+agent_config = {
+    "action_range": (0, 500),
+    "total_number_episodes" : 10000,
+    "conwip": 500,
+    "run_length": 3000
+
+
+2199 episodes
+
+Action WIP levels:
+Global Agent
+Route 0 : positive between 10 -> 90
+Route 1 : -40 -> 80 
+Route 2 : positive between 1 -> 4.0 To small
+
+
+Mu dist 
+Route 0: Healthy
+Route 1: Not healty appears to be always 0
+Route 2: Healthy
+
+Cov dist
+Route 0: Maybe to large for cov values
+Route 1: Not healty appears to be always 0
+Route 2: Healthy
+
+Worker 0
+Route 0 : -0.4 - 0.4 No change with more episodes
+Route 1 : -40 -> 80 
+Route 2 : positive between 1 -> 4.0 To small
+
+Mu dist
+Route 0 : Appears to be all zeros
+Route 1 : Healthy 
+Route 2 : Not healthy
+
+Some behaviour for the rest of the workers
+
+
+
+Worker 1 
+
+Route 0 : -0.4 - 0.4 No change with more episodes
+Route 1 : -40 -> 80 
+Route 2 : positive between 1 -> 4.0 To small
+
+Is there something happening with the firt unit of the last layer of the neural nets?
+
+GRADIENTS 
+
+MU
+Gradients more or less healthy most of them very small not an indication of problems for the mu networks
+
+COV
+Same thing as MU
+
+
+PARAMETERS
+
+Other than the bias units weights for all the networks it seems that. The distribuition of weights at every layer for MU COV 
+and CRITIC is not changing. 
+
+
+Summary: The network does not appear to be learning anything, some output appear to be 0 as well, gradients very close to 0,
+mean that for most of the neurons the product sum of weights and previous activation is predominantly negative (derivative close to 0)
+
+- Observe gradient logs
+
+
+	- Mu and Mu_old seem to be very similar at any algorithm cycle, this makes probability ratios be always close to 1 
+
+- try larger learning rates 
+- Change the activation function shape (ELU)
+- Change reward function to include parts produced instead of utilization
+
+
+Tests;
+
+Change output layer activation to ELU from relu. Neurons were apparently dying off. This Will not have a effect on trowing
+off the actions precribed allowing negative values because the actions are clipped. We can still have negative actions
+because of covariances. We can only do this for mu, cov has to be positive since we are modelling a decision agent with normal
+distribution, and normal distributions can not have negative covariances. 
+	Set cov to the absolute value of cov
+
+
+Reward is being maximized but wip is not being reduced 
+change Reward function
+
+
+1200
+
+set entropy from 1 to -1, no  result learning very slow to no learning, large covariances
+set entropy back to 1, change learning_rate to 0.001 for every network -> did not work
+change back to 0.0001 for mu and cov networks
+  - entropy seems to large on this problem covariance grew to 17.200 wich is uncprecedented 
+  - gradients vanished
+
+Decrease the entropy
+  - gradients still vanished
+  - actions exploded to the millions 
+
+keep entropy change learning rate for mu a cov to 0.001

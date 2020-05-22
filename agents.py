@@ -225,12 +225,21 @@ class PPO:
         probability_density_func = tfp.distributions.Normal(mu, cov)
         # Samples a WIP from the distribution
         action = probability_density_func.sample()
-
         if self.summary_writer != None: 
             with self.summary_writer.as_default():
-                tf.summary.histogram("Mu dist_" + self.agent_name, mu, self.number_action_calls)
-                tf.summary.histogram("Cov dist_" + self.agent_name, cov, self.number_action_calls)
-                tf.summary.histogram("Action_" + self.agent_name, action, self.number_action_calls)
+                tf.summary.histogram("Mu dist_0" + self.agent_name, tf.slice(mu,[0, 0], [1, 1]), self.number_action_calls)
+                tf.summary.histogram("Mu dist_1" + self.agent_name, tf.slice(mu, [0, 1], [1, 1]), self.number_action_calls)
+                tf.summary.histogram("Mu dist_2" + self.agent_name, tf.slice(mu, [0, 2], [1, 1]), self.number_action_calls)
+                tf.summary.histogram("Cov dist_0" + self.agent_name, tf.slice(mu,[0, 0], [1, 1]), self.number_action_calls)
+                tf.summary.histogram("Cov dist_1" + self.agent_name, tf.slice(mu,[0, 1], [1, 1]), self.number_action_calls)
+                tf.summary.histogram("Cov dist_2" + self.agent_name, tf.slice(mu,[0, 2], [1, 1]), self.number_action_calls)
+                tf.summary.histogram("Action_0" + self.agent_name, tf.slice(action,[0, 0], [1, 1]), self.number_action_calls)
+                tf.summary.histogram("Action_1" + self.agent_name, tf.slice(action,[0, 1], [1, 1]), self.number_action_calls)
+                tf.summary.histogram("Action_2" + self.agent_name, tf.slice(action,[0, 2], [1, 1]), self.number_action_calls)
+
+               # tf.summary.histogram("Mu dist_" + self.agent_name, tf.slice(mu, [0,0], [0, 1]), self.number_action_calls)
+                # tf.summary.histogram("Cov dist_" + self.agent_name, cov, self.number_action_calls)
+                # tf.summary.histogram("Action_" + self.agent_name, action, self.number_action_calls)
                 
         # print(f"Action: {action}")
         self.number_action_calls += 1
@@ -310,7 +319,8 @@ class Agent:
                         logging):
 
         for ep in range(number_ep):
-            random_seeds = [ep + 1, ep + 2, ep + 3, ep + 4, ep + 5, ep + 6, ep + 7]
+            seed = np.random.randint(1, 1000000000)
+            random_seeds = [seed + 1, seed + 2, seed + 3, seed + 4, seed + 5, seed + 6, seed + 7]
             env = simpy.Environment()
 
             self.production_system_1 = ProductionSystem(env=env,
@@ -321,11 +331,8 @@ class Agent:
                              files=files,
                              random_seeds= random_seeds,
                              logging=logging,
-                             run_length=self.run_length,
-
-                             
-                             
-                             )
+                             run_length=self.run_length)
+                                         
             self.production_system_2 = ProductionSystem(env=env,
                                                    **self.production_system_configuration,
                                                    ep_buffer=self.buffer2,
@@ -630,7 +637,7 @@ class GlobalAgent(Agent):
                     #---END gradient descent for actor Nets
                     
                 #---START update self.current_parameter with the parameters resulting from n steps of gradient descent
-                self.current_parameters = {"mu": [variable.numpy() for variable in self.PPO.actor_mu.trainable_variables],
+                self.PPO.current_parameters = {"mu": [variable.numpy() for variable in self.PPO.actor_mu.trainable_variables],
                             "cov": [variable.numpy() for variable in self.PPO.cov_head_variables],
                             "critic": [variable.numpy() for variable in self.PPO.critic.trainable_variables]
                             }
@@ -643,7 +650,7 @@ class GlobalAgent(Agent):
                 #---END Update Old policy seting theta_old = theta
    
                 #---START updattrigger = True self.current_parameter_old with 
-                self.current_parameters_old = self.current_parameters
+                self.PPO.current_parameters_old = self.PPO.current_parameters
                 
                 self.number_optimization_cycles += 1
             
@@ -710,6 +717,7 @@ class GlobalAgent(Agent):
                 writer = csv.writer(file, delimiter=",")
                 writer.writerow(["Run", self.current_number_episodes.value])
             rewards_volatile = []
+            
             for i in range (1):
                 
                 path_conwip, path_PPO = self.collect_episodes_training(1, True, False)
@@ -1003,7 +1011,7 @@ class WorkerAgent(Agent):
 
         
         #---START update variable current_parameters to reflect the information provided by global
-        self.current_parameters = {"mu": [variable.numpy() for variable in self.PPO.actor_mu.trainable_variables],
+        self.PPO.current_parameters = {"mu": [variable.numpy() for variable in self.PPO.actor_mu.trainable_variables],
                         "cov": [variable.numpy() for variable in self.PPO.cov_head_variables],
                         "critic": [variable.numpy() for variable in self.PPO.critic.trainable_variables]
     
@@ -1017,7 +1025,7 @@ ppo_networks_configuration = {"trunk_config": {"layer_sizes": [100, 80, 70],
                                       "activations": ["elu",   "elu", "elu"]},
 
                      "mu_head_config": {"layer_sizes": [60, 50, 3],
-                                        "activations": ["elu", "elu", "relu"]},
+                                        "activations": ["elu", "elu", "elu"]},
                      "cov_head_config": {"layer_sizes": [60, 50, 3],
                                         "activations": ["elu","elu", "relu"]},
                      "critic_net_config": {"layer_sizes": [100, 100, 100, 80, 40, 1],
@@ -1029,7 +1037,7 @@ ppo_networks_configuration = {"trunk_config": {"layer_sizes": [100, 80, 70],
 hyperparameters = {"ppo_networks_configuration" : ppo_networks_configuration,
                    "actor_optimizer_mu": tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9),
                    "actor_optimizer_cov": tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9),
-                    "critic_optimizer": tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9),
+                    "critic_optimizer": tf.keras.optimizers.SGD(learning_rate=0.001, momentum=0.9),
                     "entropy": 1,  
                     "gamma":0.999,
                     "gradient_clipping_actor": 1.0, 
@@ -1037,13 +1045,13 @@ hyperparameters = {"ppo_networks_configuration" : ppo_networks_configuration,
                     "gradient_steps_per_episode_critic": 5,
                     "gradient_steps_per_episode_actor": 10,
                     "epsilon": 0.2,
-                    "number_episodes_worker": 1,
+                    "number_episodes_worker": 20, 
                     "n_reward_returns": 5
                     }
 agent_config = {
     "action_range": (0, 500),
-    "total_number_episodes" : 100000,
-    "conwip": 1000,
+    "total_number_episodes" : 10000,
+    "conwip": 500,
     "run_length": 3000
     
 }
@@ -1066,7 +1074,7 @@ production_system_config = {
 if __name__ == "__main__":
     
     multiprocessing.set_start_method('spawn')
-    number_of_workers = 4 
+    number_of_workers = 4
 
     params_queue = Manager().Queue(number_of_workers)
     current_number_episodes = Manager().Value("i", 0)    
