@@ -81,6 +81,7 @@ class ProductionSystem:
                  twin_system=None, # compare current policy with another policy
                  logging=False):  # produces logs about the flow of parts through the system for current system and its twin
         self.auth_index = 0
+        self.parts_delayed = 0
         self.env = env
         self.decision_epoch_interval = decision_epoch_interval
         self.track_state_interval = track_state_interval
@@ -99,7 +100,7 @@ class ProductionSystem:
         self.twin_system = twin_system
         self.logging = logging
         self.sum_rewards = 0
-        
+        self.fifo_marking = 0         
         self.previous_exit_time = 0 #time last part exited the system
         #state representation
         #0- Wip route 1
@@ -514,7 +515,7 @@ class Part:
         # time it exits shop-floor (shop-floor exit)
         self.shop_e = None
         self.done = False
-        
+        self.generation_time = production_system.env.now
         self.env.process(self.processing())
 
     def processing(self):
@@ -545,6 +546,14 @@ class Part:
         
         self.route.number_auth_onroute += 1
         self.route.number_auth_requested -= 1
+        
+        if self.production_system.fifo_marking > self.generation_time:
+            self.production_system.parts_delayed += 1
+            self.delayed = True
+        
+        else:
+            
+            self.production_system.fifo_marking = self.generation_time 
             
         self.order_buffer.queue.get()
         #order entered production system

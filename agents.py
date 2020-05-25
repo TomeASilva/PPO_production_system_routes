@@ -672,6 +672,7 @@ class GlobalAgent(Agent):
                     for i in range (3):
                         print(f"Part_{i}: {self.production_system_1.parts_in_system[i]}")
 
+                    print(f"\033[0;32mNumber Parts delayed: {self.production_system_2.parts_delayed}\033[m")
                     print(f"\033[0;32mReward {reward_PPO}\033[m")
                      
 
@@ -735,7 +736,8 @@ class GlobalAgent(Agent):
                 for i in range (3):
                     
                     print(f"Part_{i}: {self.production_system_1.parts_in_system[i]}")
-
+                
+                print(f"\033[0;32mNumber Parts delayed: {self.production_system_2.parts_delayed}\033[m")
                 print(f"\033[0;32mReward {reward_PPO}\033[m")
                      
             print(f"Exited Global Agent")
@@ -757,7 +759,8 @@ class GlobalAgent(Agent):
                 for i in range (3):
                     
                     print(f"Part_{i}: {self.production_system_1.parts_in_system[i]}")      
-                
+               
+                print(f"\033[0;32mNumber Parts delayed: {self.production_system_2.parts_delayed}\033[m") 
                 print(f"\033[0;32mReward {reward_PPO}\033[m")
                 
             # rewards_volatile.append(reward)
@@ -1074,7 +1077,7 @@ production_system_config = {
 if __name__ == "__main__":
     
     multiprocessing.set_start_method('spawn')
-    number_of_workers = 4
+    number_of_workers = 1
 
     params_queue = Manager().Queue(number_of_workers)
     current_number_episodes = Manager().Value("i", 0)    
