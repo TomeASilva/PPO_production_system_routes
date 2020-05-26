@@ -524,7 +524,7 @@ class Part:
         self.order_buffer.queue.put(self)
         self.inf_s = self.env.now # Entered the plant as information
         if self.production_system.logging:    
-            if self.production_system.twin_system == None
+            if self.production_system.twin_system == None:
                 loggerTwin.debug(f"Part_{self.type}_{self.id} entered the system as information at {self.inf_s}")
             else:
                 logger.debug(f"Part_{self.type}_{self.id} entered the system as information at {self.inf_s}")
