@@ -523,27 +523,29 @@ class Part:
         """Sets a part into its production route """
         self.order_buffer.queue.put(self)
         self.inf_s = self.env.now # Entered the plant as information
-
-        if self.production_system.twin_system == None:
-            loggerTwin.debug(f"Part_{self.type}_{self.id} entered the system as information at {self.inf_s}")
-        else:
-            logger.debug(f"Part_{self.type}_{self.id} entered the system as information at {self.inf_s}")
+        if self.production_system.logging:    
+            if self.production_system.twin_system == None
+                loggerTwin.debug(f"Part_{self.type}_{self.id} entered the system as information at {self.inf_s}")
+            else:
+                logger.debug(f"Part_{self.type}_{self.id} entered the system as information at {self.inf_s}")
         
         "Request authorization to enter the production route"
         with self.route.queue.get() as route_req:
-            if self.production_system.twin_system == None:
-                loggerTwin.debug(f"Part_{self.type}_{self.id} requested Route_{self.route.index}")
-            else:
-                logger.debug(f"Part_{self.type}_{self.id} requested Route_{self.route.index}")
+            if self.production_system.logging:
+                if self.production_system.twin_system == None:
+                    loggerTwin.debug(f"Part_{self.type}_{self.id} requested Route_{self.route.index}")
+                else:
+                    logger.debug(f"Part_{self.type}_{self.id} requested Route_{self.route.index}")
                 
             self.route.number_auth_requested += 1 
             auth_taken = yield route_req
             
-            if self.production_system.twin_system == None:
-                loggerTwin.debug(f"Part_{self.type}_{self.id} was granted access to Route_{self.route.index}")
-            else:
-                logger.debug(f"Part_{self.type}_{self.id} was granted access Route_{self.route.index}")
-        
+            if self.production_system.logging:    
+                if self.production_system.twin_system == None:
+                    loggerTwin.debug(f"Part_{self.type}_{self.id} was granted access to Route_{self.route.index}")
+                else:
+                    logger.debug(f"Part_{self.type}_{self.id} was granted access Route_{self.route.index}")
+            
         self.route.number_auth_onroute += 1
         self.route.number_auth_requested -= 1
         
@@ -557,18 +559,19 @@ class Part:
             
         self.order_buffer.queue.get()
         #order entered production system
-        
-        if self.production_system.twin_system == None:
-            loggerTwin.debug(f"Part_{self.type}_{self.id}, released into production at {self.env.now}")
-        else:
-            logger.debug(f"{self.type}_{self.id}, released into production at {self.inf_s}")
+        if self.production_system.logging:    
+            if self.production_system.twin_system == None:
+                loggerTwin.debug(f"Part_{self.type}_{self.id}, released into production at {self.env.now}")
+            else:
+                logger.debug(f"{self.type}_{self.id}, released into production at {self.inf_s}")
         
         self.buffers[0].queue.put(self)
         
-        if self.production_system.twin_system == None:
-            loggerTwin.debug(f"Part_{self.type}_{self.id}, entered {self.buffers[0].name} at {self.env.now}")
-        else:
-            logger.debug(f"{self.type}_{self.id}, entered {self.buffers[0].name} at {self.env.now}")
+        if self.production_system.logging:    
+            if self.production_system.twin_system == None:
+                loggerTwin.debug(f"Part_{self.type}_{self.id}, entered {self.buffers[0].name} at {self.env.now}")
+            else:
+                logger.debug(f"{self.type}_{self.id}, entered {self.buffers[0].name} at {self.env.now}")
         
         self.inf_e = self.env.now
         self.shop_s = self.env.now
@@ -579,12 +582,14 @@ class Part:
                 yield request
                 self.buffers[i].queue.get()
                 
-                if self.production_system.twin_system == None:
-                    loggerTwin.debug(f"Part_{self.type}_{self.id} started being processed on {self.machines[i].name} at {self.env.now}")
-                else:
-                    logger.debug(f"{self.type}_{self.id}, started being processed on {self.machines[i].name} at {self.env.now}")
+                if self.production_system.logging:    
+                    if self.production_system.twin_system == None:
+                        loggerTwin.debug(f"Part_{self.type}_{self.id} started being processed on {self.machines[i].name} at {self.env.now}")
+                    else:
+                        logger.debug(f"{self.type}_{self.id}, started being processed on {self.machines[i].name} at {self.env.now}")
                 
                 distribution_parameters = self.production_system.parts_info[str(self.type)][self.machines[i].name]
+                
                 if self.production_system.use_seeds:
                     time = self.production_system.random_states_machines[self.machines[i].index].uniform(distribution_parameters[0], distribution_parameters[1])
                 else:
@@ -597,11 +602,13 @@ class Part:
             #Put part on the  next buffer of the product route
             if i != (len(self.machines) - 1 ):
                 self.buffers[i + 1].queue.put(self)
-                if self.production_system.twin_system == None:
-                    loggerTwin.debug(f"Part_{self.type}_{self.id}, entered {self.buffers[i + 1].name} at {self.env.now}")
-                else:
-                    logger.debug(f"{self.type}_{self.id}, entered {self.buffers[i + 1].name} at {self.env.now}")
-                        
+                
+                if self.production_system.logging:    
+                    if self.production_system.twin_system == None:
+                        loggerTwin.debug(f"Part_{self.type}_{self.id}, entered {self.buffers[i + 1].name} at {self.env.now}")
+                    else:
+                        logger.debug(f"{self.type}_{self.id}, entered {self.buffers[i + 1].name} at {self.env.now}")
+                            
         
         self.shop_e = self.env.now
         
@@ -615,11 +622,12 @@ class Part:
         
         self.route.number_auth_onroute -= 1
         
-        if self.production_system.twin_system == None:
-            loggerTwin.debug(f"Part_{self.type}_{self.id}, Exited the production system at {self.env.now}")
-        else:
-            logger.debug(f"{self.type}_{self.id}, Exited the production system at {self.env.now}")
-        
+        if self.production_system.logging:    
+            if self.production_system.twin_system == None:
+                loggerTwin.debug(f"Part_{self.type}_{self.id}, Exited the production system at {self.env.now}")
+            else:
+                logger.debug(f"{self.type}_{self.id}, Exited the production system at {self.env.now}")
+            
         #Increase the count of parts that exited the system     
         self.production_system.parts_produced += 1
         self.production_system.parts_produced_type[self.type] += 1
