@@ -471,7 +471,7 @@ class ProductionSystem:
             wip_route_1_twin = twin_state[1]
             wip_route_2_twin = twin_state[2]
         
-            twin_system_wip = [wip_route_0_twin, wip_route_1_twin, wip_route_2]
+            twin_system_wip = [wip_route_0_twin, wip_route_1_twin, wip_route_2_twin]
             # route_0 = (route_0_bottleneck >= route_0_bottleneck_twin) and (wip_route_0 <= wip_route_0_twin)
             # route_1 = (route_1_bottleneck >= route_1_bottleneck_twin) and (wip_route_1 <= wip_route_1_twin)
             # route_2 = (route_2_bottleneck >= route_2_bottleneck_twin) and (wip_route_2 <= wip_route_2_twin)
@@ -487,12 +487,24 @@ class ProductionSystem:
             
             reward = 0
             
+            # for i in range(self.number_routes):
+                # if part_goals[i] and wip_goals[i]:
+                #     reward += 1
+            
+            previous_goal = True
             for i in range(self.number_routes):
-                if part_goals[i] and wip_goals[i]:
-                    reward += 1
+                
+                goal = previous_goal and (part_goals[i] and wip_goals[i])
+                
+                previous_goal = goal
+            
+            if goal: 
+                reward =  1
+
 
             self.sum_rewards += reward 
             return reward 
+            
             
         else: 
             return 0
