@@ -1077,7 +1077,7 @@ production_system_config = {
 if __name__ == "__main__":
     
     multiprocessing.set_start_method('spawn')
-    number_of_workers = 4
+    number_of_workers = 1
 
     params_queue = Manager().Queue(number_of_workers)
     current_number_episodes = Manager().Value("i", 0)    

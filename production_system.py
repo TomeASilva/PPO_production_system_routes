@@ -254,6 +254,7 @@ class ProductionSystem:
             self.state_element_number_updates =  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             self.parts_produced_epoch = 0
             self.parts_produced_epoch_type = [0, 0, 0]
+           
 
             yield self.env.timeout(self.decision_epoch_interval)
             
@@ -476,10 +477,15 @@ class ProductionSystem:
             # route_1 = (route_1_bottleneck >= route_1_bottleneck_twin) and (wip_route_1 <= wip_route_1_twin)
             # route_2 = (route_2_bottleneck >= route_2_bottleneck_twin) and (wip_route_2 <= wip_route_2_twin)
             
+            # part_goals = []
+            # for i in range(self.number_of_different_parts):
+            #     part_goals.append(self.parts_produced_epoch_type[i] >= self.twin_system.parts_produced_epoch_type_previous[i])
+            
             part_goals = []
             for i in range(self.number_of_different_parts):
-                part_goals.append(self.parts_produced_epoch_type[i] >= self.twin_system.parts_produced_epoch_type_previous[i])
-            
+                part_goals.append(self.parts_produced_type[i] >= self.twin_system.parts_produced_type[i])
+                
+                
             wip_goals = []
             
             for i in range(self.number_routes):
@@ -500,6 +506,8 @@ class ProductionSystem:
             
             if goal: 
                 reward =  1
+            else: 
+                reward = -1
 
 
             self.sum_rewards += reward 
