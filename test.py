@@ -20,7 +20,7 @@ class Route:
         self.queue = simpy.Store(env)
         self.number_auth = 0 
         self.number_parts_produced = 0 
-        self.buffers = buffers 
+
         
 class ProductionControl:
     def __init__(self, env):

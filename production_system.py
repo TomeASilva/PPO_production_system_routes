@@ -477,14 +477,13 @@ class ProductionSystem:
             # route_1 = (route_1_bottleneck >= route_1_bottleneck_twin) and (wip_route_1 <= wip_route_1_twin)
             # route_2 = (route_2_bottleneck >= route_2_bottleneck_twin) and (wip_route_2 <= wip_route_2_twin)
             
-            # part_goals = []
-            # for i in range(self.number_of_different_parts):
-            #     part_goals.append(self.parts_produced_epoch_type[i] >= self.twin_system.parts_produced_epoch_type_previous[i])
-            
             part_goals = []
             for i in range(self.number_of_different_parts):
-                part_goals.append(self.parts_produced_type[i] >= self.twin_system.parts_produced_type[i])
-                
+                part_goals.append(self.parts_produced_epoch_type[i] >= self.twin_system.parts_produced_epoch_type_previous[i])
+
+            # part_goals = []
+            # for i in range(self.number_of_different_parts):
+            #     part_goals.append(self.parts_produced_type[i] >= self.twin_system.parts_produced_type[i])
                 
             wip_goals = []
             
@@ -493,21 +492,29 @@ class ProductionSystem:
             
             reward = 0
             
+
+             
             # for i in range(self.number_routes):
-                # if part_goals[i] and wip_goals[i]:
-                #     reward += 1
+            #     if part_goals[i] and wip_goals[i]:
+            #         reward += 1
             
-            previous_goal = True
             for i in range(self.number_routes):
+                reward += self.parts_produced_epoch_type[i] - self.twin_system.parts_produced_epoch_type_previous[i]
+                #+ twin_system_wip[i] - wip[i]
+         
+                    
+                    
+            # previous_goal = True
+            # for i in range(self.number_routes):
                 
-                goal = previous_goal and (part_goals[i] and wip_goals[i])
+            #     goal = previous_goal and (part_goals[i] and wip_goals[i])
                 
-                previous_goal = goal
+            #     previous_goal = goal
             
-            if goal: 
-                reward =  1
-            else: 
-                reward = -1
+            # if goal: 
+            #     reward =  1
+            # else: 
+            #     reward = -1
 
 
             self.sum_rewards += reward 
