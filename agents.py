@@ -1048,7 +1048,7 @@ hyperparameters = {"ppo_networks_configuration" : ppo_networks_configuration,
                     "gradient_steps_per_episode_critic": 5,
                     "gradient_steps_per_episode_actor": 5,
                     "epsilon": 0.1,
-                    "number_episodes_worker": 20, 
+                    "number_episodes_worker": 10, 
                     "n_reward_returns": 5
                     }
 agent_config = {

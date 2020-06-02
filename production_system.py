@@ -83,6 +83,7 @@ class ProductionSystem:
         self.auth_index = 0
         self.parts_delayed = 0
         self.env = env
+        self.wip_cap = [0, 0, 0]
         self.decision_epoch_interval = decision_epoch_interval
         self.track_state_interval = track_state_interval
         self.run_length = run_length
@@ -242,7 +243,8 @@ class ProductionSystem:
                     self.state_element_number_updates[i] = 1
                     self.state[i] = self.decision_epoch_interval
                     
-            #applies bias correction to the state vector 
+            #applies bias correction to the state vector
+            self.previous_wip_cap = self.wip_cap 
             self.previous_state = np.array(self.state, dtype=np.float32) / (1 - self.beta_state_weighted_average ** np.array(self.state_element_number_updates, dtype=np.float32))   
             self.previous_state = np.reshape(self.previous_state, (1, -1))
             self.action = self.policy.get_action(self.previous_state) # action is a list with Wip caps one for each route
@@ -497,19 +499,33 @@ class ProductionSystem:
             # for i in range(self.number_routes):
             #     if part_goals[i] and wip_goals[i]:
             #         reward += 1
-            
+           
+           # Don't reward the agent if it produces more parts than the twin system, This leads to routes overcompensating the bad performance of 
+           # other routes 
             for i in range(self.number_routes):
-                reward += min(self.parts_produced_epoch_type[i] - self.twin_system.parts_produced_epoch_type_previous[i], 0)
+                reward += min(self.parts_produced_epoch_type[i] - self.twin_system.parts_produced_epoch_type_previous[i], 1)
                 
-            if reward == 0:
+                #give reward to wip caps greater than zero, important to avoid 0 wip caps and stop production in a given route
+                if self.wip_cap[i] > 0:
+                    reward += 1
+                else:
+                    reward -= 1
+           
+            #Reward if we can achieve less wip and more parts prduced in every route 
+            overall_goal = True
+            for i in range(self.number_routes):
+
+                overall_goal = overall_goal and (wip_goals[i] and part_goals[i])
+            
+            if overall_goal:
                 
-                for i in range(self.number_routes):
-                    reward += self.parts_produced_epoch_type[i] - self.twin_system.parts_produced_epoch_type_previous[i]
-                
-                #+ twin_system_wip[i] - wip[i]
-            for i in range (self.number_routes):
+                reward += 100
+            #-------------------------
+            # Encourage wip increases in a route where wip is low and parts produced goals are not being achieved
+            for i in range(self.number_routes):
                 if wip_goals[i] and not part_goals[i]:
-                    reward += wip[i]
+                    if self.wip_cap[i] > self.previous_wip_cap[i]:
+                        reward += 10 
                     
                     
             # previous_goal = True
