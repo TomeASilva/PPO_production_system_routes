@@ -41,7 +41,7 @@ def summarize_performance(path):
     part_1 = flow_time[flow_time[:, 0] == 1 ][:, 2:]  
     part_2 = flow_time[flow_time[:, 0] == 2 ][:, 2:]  
     
-    flow_time_parts = [np.mean(part[: , -1], axis=0) for part in [part_0, part_1, part_2]]
+    flow_time_parts = [np.mean(part[:, -1], axis=0) for part in [part_0, part_1, part_2]]
     cycle_time_parts = [np.mean(part[:, -2], axis=0) for part in [part_0, part_1, part_2]]
     
     
@@ -1038,16 +1038,16 @@ ppo_networks_configuration = {"trunk_config": {"layer_sizes": [100, 80, 70],
 
 
 hyperparameters = {"ppo_networks_configuration" : ppo_networks_configuration,
-                   "actor_optimizer_mu": tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9),
-                   "actor_optimizer_cov": tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9),
-                    "critic_optimizer": tf.keras.optimizers.SGD(learning_rate=0.001, momentum=0.9),
+                   "actor_optimizer_mu": tf.keras.optimizers.SGD(learning_rate=0.00001, momentum=0.9),
+                   "actor_optimizer_cov": tf.keras.optimizers.SGD(learning_rate=0.00001, momentum=0.9),
+                    "critic_optimizer": tf.keras.optimizers.SGD(learning_rate=0.0001, momentum=0.9),
                     "entropy": 1,  
                     "gamma":0.999,
                     "gradient_clipping_actor": 1.0, 
                     "gradient_clipping_critic": 1.0, 
                     "gradient_steps_per_episode_critic": 5,
-                    "gradient_steps_per_episode_actor": 10,
-                    "epsilon": 0.2,
+                    "gradient_steps_per_episode_actor": 5,
+                    "epsilon": 0.1,
                     "number_episodes_worker": 20, 
                     "n_reward_returns": 5
                     }

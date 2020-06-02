@@ -499,9 +499,17 @@ class ProductionSystem:
             #         reward += 1
             
             for i in range(self.number_routes):
-                reward += min(self.parts_produced_epoch_type[i] - self.twin_system.parts_produced_epoch_type_previous[i], 1)
+                reward += min(self.parts_produced_epoch_type[i] - self.twin_system.parts_produced_epoch_type_previous[i], 0)
+                
+            if reward == 0:
+                
+                for i in range(self.number_routes):
+                    reward += self.parts_produced_epoch_type[i] - self.twin_system.parts_produced_epoch_type_previous[i]
+                
                 #+ twin_system_wip[i] - wip[i]
-         
+            for i in range (self.number_routes):
+                if wip_goals[i] and not part_goals[i]:
+                    reward += wip[i]
                     
                     
             # previous_goal = True
